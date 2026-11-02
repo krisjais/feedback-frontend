@@ -54,11 +54,15 @@ export default function StudentDashboard() {
         api.get('/announcements'),
       ]);
 
-      if (formsRes.data.success) setForms(formsRes.data.forms || []);
-      if (complaintsRes.data.success) setComplaints(complaintsRes.data.complaints || []);
-      if (annRes.data.success) setAnnouncements(annRes.data.announcements || []);
+      if (formsRes?.data?.success) setForms(formsRes.data.forms || []);
+      if (complaintsRes?.data?.success) setComplaints(complaintsRes.data.complaints || []);
+      if (annRes?.data?.success) setAnnouncements(annRes.data.announcements || []);
     } catch (err) {
-      console.error('Failed to load student dashboard:', err);
+      if (err.response?.status === 401) {
+        router.push('/login');
+        return;
+      }
+      console.warn('Failed to load student dashboard:', err.message);
     } finally {
       setLoading(false);
     }

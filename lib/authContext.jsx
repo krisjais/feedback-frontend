@@ -16,10 +16,24 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize session from server-side HTTP-only cookie or fallback token
+  // Initialize session from storage / cookie
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        // Hydrate from localStorage first so immediate queries have Bearer token
+        if (typeof window !== 'undefined') {
+          const savedUser = localStorage.getItem('cv_user');
+          const savedToken = localStorage.getItem('cv_token');
+          if (savedUser && savedToken) {
+            try {
+              const parsed = JSON.parse(savedUser);
+              parsed.role = normalizeRole(parsed.role);
+              setUser(parsed);
+              setToken(savedToken);
+            } catch (e) {}
+          }
+        }
+
         const res = await api.get('/auth/me');
         if (res.data.success && res.data.user) {
           const normalizedUser = {
@@ -30,26 +44,16 @@ export const AuthProvider = ({ children }) => {
           if (typeof window !== 'undefined') {
             localStorage.setItem('cv_user', JSON.stringify(normalizedUser));
           }
-        } else {
-          setUser(null);
         }
       } catch (err) {
-        // Fallback: check localStorage if server cookie failed
-        if (typeof window !== 'undefined') {
-          const savedUser = localStorage.getItem('cv_user');
-          const savedToken = localStorage.getItem('cv_token');
-          if (savedUser && savedToken) {
-            try {
-              const parsed = JSON.parse(savedUser);
-              parsed.role = normalizeRole(parsed.role);
-              setUser(parsed);
-              setToken(savedToken);
-            } catch (e) {
-              logout();
-            }
-          } else {
-            setUser(null);
+        if (err.response?.status === 401) {
+          // Token is genuinely invalid or expired on backend
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('cv_token');
+            localStorage.removeItem('cv_user');
           }
+          setUser(null);
+          setToken(null);
         }
       } finally {
         setLoading(false);

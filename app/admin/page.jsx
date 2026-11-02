@@ -119,6 +119,31 @@ export default function AdminPortalPage() {
   const [complaintFilterCategory, setComplaintFilterCategory] = useState('all');
   const [complaintFilterPriority, setComplaintFilterPriority] = useState('all');
 
+  // User Directory State
+  const [userRoleFilter, setUserRoleFilter] = useState('all');
+  const [userSearch, setUserSearch] = useState('');
+
+  // Participation Filter State
+  const [participationFilter, setParticipationFilter] = useState('all');
+  const [participationSearch, setParticipationSearch] = useState('');
+
+  // HR Visible Panels & Portal Settings State
+  const [hrVisiblePanelsState, setHrVisiblePanelsState] = useState([
+    'dashboard',
+    'form-builder',
+    'all-forms',
+    'responses',
+    'participation',
+    'complaints',
+    'analytics',
+    'announcements',
+    'departments',
+  ]);
+  const [collegeNameInput, setCollegeNameInput] = useState('');
+  const [supportEmailInput, setSupportEmailInput] = useState('');
+  const [complaintSlaInput, setComplaintSlaInput] = useState(5);
+  const [savingSettings, setSavingSettings] = useState(false);
+
   useEffect(() => {
     setNewFormDeadline(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
     if (!authLoading) {
@@ -163,12 +188,47 @@ export default function AdminPortalPage() {
       if (usersRes.data.success) setUsersList(usersRes.data.users || []);
       if (annRes.data.success) setAnnouncements(annRes.data.announcements || []);
       if (auditRes.data.success) setAuditLogs(auditRes.data.logs || []);
-      if (settingsRes.data.success) setSettings(settingsRes.data.settings || {});
+      if (settingsRes.data.success) {
+        const s = settingsRes.data.settings || {};
+        setSettings(s);
+        if (Array.isArray(s.hrVisiblePanels)) setHrVisiblePanelsState(s.hrVisiblePanels);
+        setCollegeNameInput(s.collegeName || '');
+        setSupportEmailInput(s.supportEmail || '');
+        setComplaintSlaInput(s.complaintSlaDays || 5);
+      }
     } catch (err) {
       console.error('Failed to load admin data:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveSettings = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      setSavingSettings(true);
+      const res = await api.put('/settings', {
+        collegeName: collegeNameInput,
+        supportEmail: supportEmailInput,
+        complaintSlaDays: Number(complaintSlaInput),
+        hrVisiblePanels: hrVisiblePanelsState,
+      });
+      if (res.data.success) {
+        alert('Institutional settings & HR portal panel permissions saved successfully!');
+        const refreshed = await api.get('/settings');
+        if (refreshed.data.success) setSettings(refreshed.data.settings);
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error updating settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const toggleHRPanel = (panelId) => {
+    setHrVisiblePanelsState((prev) =>
+      prev.includes(panelId) ? prev.filter((id) => id !== panelId) : [...prev, panelId]
+    );
   };
 
   // Complaint Drilldown & Lifecycle Operations
@@ -394,10 +454,11 @@ export default function AdminPortalPage() {
             responses: stats.totalResponses,
             openComplaints: stats.openComplaints,
           }}
+          role="super_admin"
         />
 
         {/* Main Administrative Work Area */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
           {/* ======================================================== */}
           {/* TAB 1: EXECUTIVE DASHBOARD OVERVIEW */}
           {/* ======================================================== */}
@@ -1123,7 +1184,7 @@ export default function AdminPortalPage() {
               <div className="border-b border-slate-100 pb-4">
                 <h2 className="text-lg font-bold text-slate-900">Student Participation Tracker</h2>
                 <p className="text-xs text-slate-500">
-                  Verify individual student survey completion for administrative accreditation without exposing anonymous answer choices.
+                  Verify individual student survey completion for administrative accreditation. Tracks students only (HR staff are excluded).
                 </p>
               </div>
 
@@ -1152,18 +1213,93 @@ export default function AdminPortalPage() {
               {participationData && (
                 <div className="space-y-4 pt-2">
                   {/* Summary Bar */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
                       <span className="text-xs text-blue-700 font-semibold">Total Target Cohort</span>
-                      <p className="text-2xl font-bold text-blue-950 mt-1">{participationData.totalEligible}</p>
+                      <p className="text-2xl font-bold text-blue-950 mt-1">
+                        {(participationData?.participationList || []).filter(
+                          (s) => s.role !== 'hr_officer' && s.role !== 'hr' && s.role !== 'super_admin' && s.role !== 'superadmin'
+                        ).length}
+                      </p>
                     </div>
                     <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
-                      <span className="text-xs text-emerald-700 font-semibold">Submissions Received</span>
-                      <p className="text-2xl font-bold text-emerald-950 mt-1">{participationData.totalSubmitted}</p>
+                      <span className="text-xs text-emerald-700 font-semibold">Responded / Completed</span>
+                      <p className="text-2xl font-bold text-emerald-950 mt-1">
+                        {(participationData?.participationList || []).filter(
+                          (s) => s.role !== 'hr_officer' && s.role !== 'hr' && s.role !== 'super_admin' && s.role !== 'superadmin' && s.hasSubmitted
+                        ).length}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
+                      <span className="text-xs text-amber-700 font-semibold">Remaining / Pending</span>
+                      <p className="text-2xl font-bold text-amber-950 mt-1">
+                        {(participationData?.participationList || []).filter(
+                          (s) => s.role !== 'hr_officer' && s.role !== 'hr' && s.role !== 'super_admin' && s.role !== 'superadmin' && !s.hasSubmitted
+                        ).length}
+                      </p>
                     </div>
                     <div className="p-4 bg-purple-50 border border-purple-100 rounded-xl">
                       <span className="text-xs text-purple-700 font-semibold">Participation Rate</span>
                       <p className="text-2xl font-bold text-purple-950 mt-1">{participationData.participationRate}%</p>
+                    </div>
+                  </div>
+
+                  {/* Filter Tabs & Search */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                    <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl">
+                      <button
+                        onClick={() => setParticipationFilter('all')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          participationFilter === 'all'
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        All Students (
+                        {(participationData?.participationList || []).filter(
+                          (s) => s.role !== 'hr_officer' && s.role !== 'hr' && s.role !== 'super_admin' && s.role !== 'superadmin'
+                        ).length}
+                        )
+                      </button>
+                      <button
+                        onClick={() => setParticipationFilter('completed')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          participationFilter === 'completed'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-emerald-700 hover:text-emerald-900'
+                        }`}
+                      >
+                        Responded (
+                        {(participationData?.participationList || []).filter(
+                          (s) => s.role !== 'hr_officer' && s.role !== 'hr' && s.role !== 'super_admin' && s.role !== 'superadmin' && s.hasSubmitted
+                        ).length}
+                        )
+                      </button>
+                      <button
+                        onClick={() => setParticipationFilter('pending')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          participationFilter === 'pending'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'text-amber-700 hover:text-amber-900'
+                        }`}
+                      >
+                        Remaining (
+                        {(participationData?.participationList || []).filter(
+                          (s) => s.role !== 'hr_officer' && s.role !== 'hr' && s.role !== 'super_admin' && s.role !== 'superadmin' && !s.hasSubmitted
+                        ).length}
+                        )
+                      </button>
+                    </div>
+
+                    <div className="relative max-w-xs w-full">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        placeholder="Search student or department..."
+                        value={participationSearch}
+                        onChange={(e) => setParticipationSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                      />
                     </div>
                   </div>
 
@@ -1180,29 +1316,48 @@ export default function AdminPortalPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {participationData.participationList?.map((s, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-3 font-mono font-bold text-slate-700">{s.studentId}</td>
-                            <td className="px-4 py-3 font-semibold text-slate-900">{s.name}</td>
-                            <td className="px-4 py-3 text-slate-500">
-                              {s.department} • {s.academicYear}
-                            </td>
-                            <td className="px-4 py-3 font-mono text-[11px] text-slate-500">
-                              {s.receiptCode || '—'}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {s.hasSubmitted ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                                  Completed
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-                                  Pending
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                        {(participationData.participationList || [])
+                          .filter(
+                            (s) => s.role !== 'hr_officer' && s.role !== 'hr' && s.role !== 'super_admin' && s.role !== 'superadmin'
+                          )
+                          .filter((s) => {
+                            if (participationFilter === 'completed') return s.hasSubmitted;
+                            if (participationFilter === 'pending') return !s.hasSubmitted;
+                            return true;
+                          })
+                          .filter((s) => {
+                            if (!participationSearch.trim()) return true;
+                            const term = participationSearch.toLowerCase();
+                            return (
+                              s.name?.toLowerCase().includes(term) ||
+                              s.studentId?.toLowerCase().includes(term) ||
+                              s.email?.toLowerCase().includes(term) ||
+                              s.department?.toLowerCase().includes(term)
+                            );
+                          })
+                          .map((s, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-3 font-mono font-bold text-slate-700">{s.studentId || '—'}</td>
+                              <td className="px-4 py-3 font-semibold text-slate-900">{s.name}</td>
+                              <td className="px-4 py-3 text-slate-500">
+                                {s.department} • {s.academicYear}
+                              </td>
+                              <td className="px-4 py-3 font-mono text-[11px] text-slate-500">
+                                {s.receiptCode || '—'}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {s.hasSubmitted ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                    Completed
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                                    Remaining (Pending)
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>
@@ -1601,12 +1756,74 @@ export default function AdminPortalPage() {
           {/* ======================================================== */}
           {activeTab === 'users' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">User Directory</h2>
                   <p className="text-xs text-slate-500">
-                    Manage students, faculty evaluators, and grievance officers.
+                    Comprehensive registry of Enrolled Students, HR Grievance Officers, and Super Administrators.
                   </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Total Registered: <strong className="text-slate-900">{usersList.length}</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Role Filter Tabs & Search Bar */}
+              <div className="p-4 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center space-x-1.5 bg-slate-200/80 p-1 rounded-xl">
+                  <button
+                    onClick={() => setUserRoleFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      userRoleFilter === 'all'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All Users ({usersList.length})
+                  </button>
+                  <button
+                    onClick={() => setUserRoleFilter('student')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      userRoleFilter === 'student'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-700 hover:text-emerald-900'
+                    }`}
+                  >
+                    Students ({usersList.filter((u) => u.role === 'student').length})
+                  </button>
+                  <button
+                    onClick={() => setUserRoleFilter('hr')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      userRoleFilter === 'hr'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-blue-700 hover:text-blue-900'
+                    }`}
+                  >
+                    HR Officers ({usersList.filter((u) => u.role === 'hr_officer' || u.role === 'hr').length})
+                  </button>
+                  <button
+                    onClick={() => setUserRoleFilter('super_admin')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      userRoleFilter === 'super_admin'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-purple-700 hover:text-purple-900'
+                    }`}
+                  >
+                    Super Admins ({usersList.filter((u) => u.role === 'super_admin' || u.role === 'superadmin').length})
+                  </button>
+                </div>
+
+                <div className="relative max-w-xs w-full">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search name, email, roll ID..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
+                  />
                 </div>
               </div>
 
@@ -1614,46 +1831,87 @@ export default function AdminPortalPage() {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase">
                     <tr>
-                      <th className="px-5 py-3">Name & Email</th>
-                      <th className="px-5 py-3">Role</th>
-                      <th className="px-5 py-3">Student ID</th>
-                      <th className="px-5 py-3">Department</th>
-                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3">User & Contact</th>
+                      <th className="px-5 py-3">System Role</th>
+                      <th className="px-5 py-3">Student Roll / ID</th>
+                      <th className="px-5 py-3">Department & Year</th>
+                      <th className="px-5 py-3">Account Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {usersList.map((u) => (
-                      <tr key={u._id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-5 py-3.5">
-                          <div className="font-bold text-slate-900">{u.name}</div>
-                          <div className="text-[11px] text-slate-400">{u.email}</div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                              u.role === 'superadmin'
-                                ? 'bg-purple-100 text-purple-800'
-                                : u.role === 'hr'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            {u.role}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 font-mono text-slate-600">
-                          {u.studentId || '—'}
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600 font-medium">
-                          {u.department?.name || 'N/A'}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase">
-                            {u.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {usersList
+                      .filter((u) => {
+                        const roleMatches =
+                          userRoleFilter === 'all'
+                            ? true
+                            : userRoleFilter === 'student'
+                            ? u.role === 'student'
+                            : userRoleFilter === 'hr'
+                            ? u.role === 'hr_officer' || u.role === 'hr'
+                            : userRoleFilter === 'super_admin'
+                            ? u.role === 'super_admin' || u.role === 'superadmin'
+                            : true;
+
+                        if (!roleMatches) return false;
+                        if (!userSearch.trim()) return true;
+                        const term = userSearch.toLowerCase();
+                        return (
+                          u.name?.toLowerCase().includes(term) ||
+                          u.email?.toLowerCase().includes(term) ||
+                          u.studentId?.toLowerCase().includes(term) ||
+                          u.department?.name?.toLowerCase().includes(term) ||
+                          u.role?.toLowerCase().includes(term)
+                        );
+                      })
+                      .map((u) => {
+                        const isStudent = u.role === 'student';
+                        const isHR = u.role === 'hr_officer' || u.role === 'hr';
+                        const isSuperAdmin = u.role === 'super_admin' || u.role === 'superadmin';
+
+                        return (
+                          <tr key={u._id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-5 py-3.5">
+                              <div className="font-bold text-slate-900">{u.name}</div>
+                              <div className="text-[11px] text-slate-400">{u.email}</div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              {isSuperAdmin && (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-purple-100 text-purple-800">
+                                  Super Admin
+                                </span>
+                              )}
+                              {isHR && (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-100 text-blue-800">
+                                  HR Officer
+                                </span>
+                              )}
+                              {isStudent && (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
+                                  Student
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5 font-mono text-slate-600 font-semibold">
+                              {u.studentId || (isStudent ? 'Unassigned' : 'Staff / N/A')}
+                            </td>
+                            <td className="px-5 py-3.5 text-slate-600 font-medium">
+                              {u.department?.name || 'General Campus'}
+                              {u.academicYear && u.academicYear !== 'Staff/N/A' ? ` • ${u.academicYear}` : ''}
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                  u.status === 'active' || u.accountStatus === 'active'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                {u.status || u.accountStatus || 'active'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -1738,53 +1996,147 @@ export default function AdminPortalPage() {
               <div className="border-b border-slate-100 pb-4">
                 <h2 className="text-lg font-bold text-slate-900">Institutional Portal Configuration</h2>
                 <p className="text-xs text-slate-500">
-                  Configure college parameters, grievance SLA targets, and anonymous submission toggles.
+                  Configure college parameters, grievance SLA targets, and manage HR Portal panel visibility.
                 </p>
               </div>
 
-              <div className="space-y-4 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">
-                    College / University Name
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue={settings.collegeName}
-                    className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-lg"
-                  />
+              <form onSubmit={handleSaveSettings} className="space-y-6 text-xs">
+                {/* College General Settings */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-900">Institution Identity & SLA</h3>
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">
+                      College / University Name
+                    </label>
+                    <input
+                      type="text"
+                      value={collegeNameInput}
+                      onChange={(e) => setCollegeNameInput(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">
+                      Grievance Cell Contact Email
+                    </label>
+                    <input
+                      type="email"
+                      value={supportEmailInput}
+                      onChange={(e) => setSupportEmailInput(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">
+                      Resolution Target SLA (Days)
+                    </label>
+                    <input
+                      type="number"
+                      value={complaintSlaInput}
+                      onChange={(e) => setComplaintSlaInput(e.target.value)}
+                      className="w-full max-w-xs px-3.5 py-2 text-xs border border-slate-300 rounded-lg"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">
-                    Grievance Cell Contact Email
-                  </label>
-                  <input
-                    type="email"
-                    defaultValue={settings.supportEmail}
-                    className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-lg"
-                  />
+                {/* Section: HR Portal Panel Access Control */}
+                <div className="pt-4 border-t border-slate-200 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">HR Portal Panel Permissions</h3>
+                      <p className="text-xs text-slate-500">
+                        Choose which dashboard panels and modules are visible to HR Officers.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      {hrVisiblePanelsState.length} Active Panels
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    {[
+                      { id: 'dashboard', label: 'Dashboard Overview', desc: 'Summary KPIs, statistics cards, and urgent alerts' },
+                      { id: 'form-builder', label: 'Form Builder', desc: 'Design, configure, and publish new surveys' },
+                      { id: 'all-forms', label: 'All Feedback Forms', desc: 'Browse and inspect institutional surveys' },
+                      { id: 'responses', label: 'Feedback Responses', desc: 'Inspect survey answers and export CSV/Excel' },
+                      { id: 'participation', label: 'Student Participation Tracker', desc: 'Track students who completed vs remaining pending' },
+                      { id: 'complaints', label: 'Complaint Management', desc: 'Investigate, assign departments, and resolve grievances' },
+                      { id: 'analytics', label: 'Analytics & Reports', desc: 'Departmental SLA analytics and printable PDF reports' },
+                      { id: 'announcements', label: 'Announcements', desc: 'Broadcast notices to the student body' },
+                      { id: 'departments', label: 'Departments Directory', desc: 'Directory of college academic departments' },
+                    ].map((panel) => {
+                      const isChecked = hrVisiblePanelsState.includes(panel.id);
+                      return (
+                        <label
+                          key={panel.id}
+                          className={`p-3.5 rounded-xl border flex items-start space-x-3 cursor-pointer transition-all ${
+                            isChecked
+                              ? 'bg-blue-50/60 border-blue-200 shadow-2xs'
+                              : 'bg-slate-50 border-slate-200 opacity-60'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleHRPanel(panel.id)}
+                            className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <div className="space-y-0.5">
+                            <span className="font-bold text-xs text-slate-900 block">{panel.label}</span>
+                            <span className="text-[11px] text-slate-500 block leading-tight">{panel.desc}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+
+                    {/* Restricted Panels (Super Admin Only) */}
+                    <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-100 flex items-start space-x-3 opacity-75">
+                      <Lock className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                      <div className="space-y-0.5">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-bold text-xs text-slate-700">Activity Audit Logs</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-600 uppercase">
+                            Super Admin Only
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block leading-tight">
+                          Immutable security audit logs are restricted from HR officers.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-100 flex items-start space-x-3 opacity-75">
+                      <Lock className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                      <div className="space-y-0.5">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-bold text-xs text-slate-700">User Directory & Admin Controls</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-600 uppercase">
+                            Super Admin Only
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block leading-tight">
+                          User provisioning and system role management are restricted from HR officers.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">
-                    Resolution Target SLA (Days)
-                  </label>
-                  <input
-                    type="number"
-                    defaultValue={settings.complaintSlaDays || 5}
-                    className="w-full max-w-xs px-3.5 py-2 text-xs border border-slate-300 rounded-lg"
-                  />
-                </div>
-
-                <div className="pt-2">
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">
+                    Changes take effect immediately for all active HR officer sessions.
+                  </span>
                   <button
-                    onClick={() => alert('Settings saved successfully!')}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-2xs"
+                    type="submit"
+                    disabled={savingSettings}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-2xs transition-all disabled:opacity-50"
                   >
-                    Save Changes
+                    {savingSettings ? 'Saving...' : 'Save Settings & HR Permissions'}
                   </button>
                 </div>
-              </div>
+              </form>
             </div>
           )}
         </main>

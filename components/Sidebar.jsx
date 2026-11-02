@@ -15,9 +15,15 @@ import {
   CheckCircle2,
   GraduationCap,
 } from 'lucide-react';
+import { useAuth } from '@/lib/authContext';
 
-export default function Sidebar({ activeTab, setActiveTab, counts = {} }) {
-  const menuItems = [
+export default function Sidebar({ activeTab, setActiveTab, counts = {}, visiblePanels = null, role = null }) {
+  const { user } = useAuth();
+  const currentRole = role || user?.role;
+  const isSuperAdmin = currentRole === 'super_admin' || currentRole === 'superadmin';
+  const isHR = currentRole === 'hr_officer' || currentRole === 'hr';
+
+  const allMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'form-builder', label: 'Form Builder', icon: PlusCircle, badge: 'New' },
     { id: 'all-forms', label: 'All Feedback Forms', icon: FileSpreadsheet, count: counts.forms },
@@ -38,13 +44,36 @@ export default function Sidebar({ activeTab, setActiveTab, counts = {} }) {
     { id: 'settings', label: 'Portal Settings', icon: Sliders },
   ];
 
+  // Default allowed panels for HR when not explicitly configured
+  const defaultHRPanels = [
+    'dashboard',
+    'form-builder',
+    'all-forms',
+    'responses',
+    'participation',
+    'complaints',
+    'analytics',
+    'announcements',
+    'departments',
+  ];
+
+  let filteredItems = allMenuItems;
+
+  if (isHR) {
+    const allowed = Array.isArray(visiblePanels) && visiblePanels.length > 0 ? visiblePanels : defaultHRPanels;
+    // HR is NEVER allowed to access Activity Logs, Users, or Portal Settings
+    filteredItems = allMenuItems.filter(
+      (item) => item.id !== 'audit-logs' && item.id !== 'users' && item.id !== 'settings' && allowed.includes(item.id)
+    );
+  }
+
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 min-h-[calc(100vh-4rem)] flex flex-col justify-between p-3 shrink-0">
+    <aside className="w-64 bg-white border-r border-slate-200 md:sticky md:top-16 h-auto md:h-[calc(100vh-4rem)] md:self-start overflow-y-auto flex flex-col justify-between p-3 shrink-0 z-30">
       <div className="space-y-1">
         <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-          HR Administration
+          {isSuperAdmin ? 'Super Admin Portal' : 'HR Administration'}
         </div>
-        {menuItems.map((item) => {
+        {filteredItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
           return (
