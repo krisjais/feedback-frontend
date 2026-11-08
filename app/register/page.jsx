@@ -14,7 +14,6 @@ export default function RegisterPage() {
   const [departments, setDepartments] = useState([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [studentId, setStudentId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [academicYear, setAcademicYear] = useState('1st Year');
   const [phone, setPhone] = useState('');
@@ -119,7 +118,6 @@ export default function RegisterPage() {
         name: name.trim(),
         email: email.trim(),
         password,
-        studentId: studentId.trim(),
         department: departmentId,
         academicYear,
         phone: phone.trim(),
@@ -187,16 +185,20 @@ export default function RegisterPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Student Roll / ID <span className="text-red-500">*</span>
+                  Department <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
+                <select
                   required
-                  placeholder="STU-2026-001"
-                  value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
+                  value={departmentId}
+                  onChange={(e) => handleDepartmentChange(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
+                >
+                  {departments.map((dept) => (
+                    <option key={dept._id} value={dept._id}>
+                      {dept.displayName || dept.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -215,24 +217,6 @@ export default function RegisterPage() {
                   ))}
                 </select>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Department <span className="text-red-500">*</span>
-              </label>
-              <select
-                required
-                value={departmentId}
-                onChange={(e) => handleDepartmentChange(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              >
-                {departments.map((dept) => (
-                  <option key={dept._id} value={dept._id}>
-                    {dept.displayName || dept.name}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div>

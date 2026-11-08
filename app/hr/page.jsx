@@ -425,7 +425,7 @@ export default function HRPortalPage() {
         <div className="min-h-screen bg-slate-50 flex flex-col">
           <Navbar />
 
-          <div className="flex-1 flex flex-col md:flex-row">
+          <div className="flex-1 flex flex-col md:flex-row items-start relative w-full">
             {/* HR Sidebar */}
             <Sidebar
               activeTab={activeTab}
